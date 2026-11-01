@@ -56,6 +56,17 @@ case "${1:-}" in
     [[ -x /usr/local/x-ui/x-ui && -r /etc/x-ui/install-result.env ]] || {
       echo '3x-ui installation incomplete' >&2; exit 1;
     }
+    chown -R root:root /usr/local/x-ui
+    # 3x-ui enables a separate subscription server on TCP 2096 by default.
+    # This stack supplies a direct client link, so no subscription listener is needed.
+    python3 - <<'PY'
+import sqlite3
+db = sqlite3.connect('/etc/x-ui/x-ui.db')
+updated = db.execute("update settings set value = 'false' where key = 'subEnable'")
+if updated.rowcount == 0:
+    db.execute("insert into settings (key, value) values ('subEnable', 'false')")
+db.commit()
+PY
     python3 "$(dirname "$0")/xui_inbound.py" "$domain" "$username" "$cert" "$key" "$PANEL_PORT" "$DIRECT_PORT"
     /usr/local/x-ui/x-ui cert -webCert "$cert" -webCertKey "$key" > /etc/vpn-stack-xui/cert.log 2>&1
     systemctl restart x-ui
@@ -71,6 +82,9 @@ case "${1:-}" in
       sleep 1
     done
     [[ $ready == 1 ]] || { echo '3x-ui panel TLS or direct TCP readiness check failed' >&2; exit 1; }
+    if ss -H -lnt | awk '{print $4}' | grep -Eq ':2096$'; then
+      echo 'Unused 3x-ui subscription port is still listening' >&2; exit 1
+    fi
     python3 - "$domain" "$PANEL_PORT" <<'PY'
 import pathlib, re, sys
 path = pathlib.Path('/etc/x-ui/install-result.env')
