@@ -108,10 +108,14 @@ def main():
         return
 
     selected = settings["clients"][0]["id"]
+    # 3x-ui requires email labels to be unique across all inbounds. The UUIDs
+    # stay the same, so existing clients can use either port during migration.
+    for index, client in enumerate(settings["clients"]):
+        client["email"] = f"vpn-stack-443-{index}-{client['id'][:8]}"
     if args.extra_client_stdin:
         extra = str(uuid.UUID(sys.stdin.readline().strip()))
         if all(client["id"] != extra for client in settings["clients"]):
-            settings["clients"].append({"id": extra, "email": "imported-client", "enable": True})
+            settings["clients"].append({"id": extra, "email": f"vpn-stack-443-imported-{extra[:8]}", "enable": True})
         selected = extra
     stream["tlsSettings"]["alpn"] = ["h2", "http/1.1"]
     payload = {
