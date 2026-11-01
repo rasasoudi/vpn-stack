@@ -25,7 +25,7 @@ OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VL
 sudo bash ./setup.sh
 ```
 
-The script asks for the domain, VPN username, and VPN password. It checks the current services and ports before changing them. On an existing managed VPN server, it updates the requested VPN account and preserves the 3x-ui direct TCP inbound. On a fresh server, it installs OpenVPN UDP/TCP, ocserv, and 3x-ui. It saves the single OpenVPN profile at `/etc/vpn-stack/clients/auto.ovpn`, the direct TCP client link at `/etc/vpn-stack-xui/client.txt`, and random panel login details at `/etc/x-ui/install-result.env`. These files are root-only. The panel's HTTPS address is `https://VPN_DOMAIN:2083/` followed by the generated `XUI_WEB_BASE_PATH` from that credentials file. The panel password is separate from the prompted VPN password.
+The script asks for the domain, VPN username, and VPN password. It checks the current services and ports before changing them. On an existing managed VPN server, it updates the requested VPN account and preserves the 3x-ui direct TCP inbound. On a fresh server, it installs OpenVPN UDP/TCP, ocserv, and 3x-ui. It disables 3x-ui's unused subscription server on port 2096; the direct TCP client link remains available as a file. It saves the single OpenVPN profile at `/etc/vpn-stack/clients/auto.ovpn`, the direct TCP client link at `/etc/vpn-stack-xui/client.txt`, and random panel login details at `/etc/x-ui/install-result.env`. These files are root-only. The panel's HTTPS address is `https://VPN_DOMAIN:2083/` followed by the generated `XUI_WEB_BASE_PATH` from that credentials file. The panel password is separate from the prompted VPN password.
 
 Run a read-only check first, entering only the domain:
 
