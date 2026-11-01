@@ -8,6 +8,7 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from xui_client import write_client
 
 
 def main() -> int:
@@ -59,20 +60,24 @@ def main() -> int:
         "streamSettings": {
             "network": "tcp", "security": "tls",
             "tcpSettings": {"acceptProxyProtocol": False, "header": {"type": "none"}},
-            "tlsSettings": {"serverName": domain, "certificates": [{"certificateFile": cert, "keyFile": key}]},
+            "tlsSettings": {"serverName": domain, "alpn": ["h2", "http/1.1"],
+                            "certificates": [{"certificateFile": cert, "keyFile": key}]},
         },
         "sniffing": {"enabled": False, "destOverride": []},
     }
     api("POST", "/add", payload)
     link = (f"vless://{client_id}@{domain}:{direct_port}?"
-            + urllib.parse.urlencode({"type": "tcp", "security": "tls", "sni": domain})
+            + urllib.parse.urlencode({"type": "tcp", "security": "tls", "sni": domain,
+                                      "alpn": "h2,http/1.1", "fp": "chrome"})
             + "#" + urllib.parse.quote(username))
     output = pathlib.Path("/etc/vpn-stack-xui/client.txt")
     output.write_text(link + "\n")
     output.chmod(0o600)
+    write_client(domain, int(direct_port), client_id)
     print("VLESS/TCP+TLS inbound created in 3x-ui; client link saved root-only")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

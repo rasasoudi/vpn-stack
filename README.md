@@ -8,16 +8,16 @@ Auditable installer for OpenVPN, Cisco/AnyConnect, and direct VLESS/TCP on Ubunt
 | OpenVPN UDP only | 1194/UDP | `udp.ovpn` |
 | OpenVPN TCP only | 1195/TCP | `tcp.ovpn` |
 | ocserv / Cisco AnyConnect | 110/TCP and 110/UDP | `https://VPN_DOMAIN:110` |
-| Direct VLESS/TCP | 10443/TCP | Existing 3x-ui client, or a new TLS-protected VLESS link in 3x-ui |
+| Direct VLESS/TCP | 443/TCP | 3x-ui VLESS link or Xray JSON profile |
 
-OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VLESS uses its own UUID; the username is only a label for the new VLESS client. On the existing 3x-ui server, `setup.sh` checks and preserves the direct VLESS/TCP inbound without changing its client UUID or panel. On a fresh server without 3x-ui, it installs 3x-ui and creates a TLS-protected VLESS/TCP inbound inside it. SSH accounts and other web services are left alone. OpenVPN uses a locally generated CA, server key, and `tls-crypt` key. No keys from the third-party installers are used.
+OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VLESS uses its own UUID; the username is only a label for the new VLESS client. On an existing 3x-ui server, `setup.sh` checks and preserves the direct VLESS/TCP inbound and panel. On a managed installation using the former port 10443, it adds port 443 with the existing client UUID and keeps 10443 available for existing clients. On a fresh server without 3x-ui, it installs 3x-ui and creates a TLS-protected VLESS/TCP inbound on 443. SSH accounts and other web services are left alone. OpenVPN uses a locally generated CA, server key, and `tls-crypt` key. No keys from the third-party installers are used.
 
 ## Prerequisites
 
 1. Point the domain's A record to an IPv4 address on the server.
 2. `setup.sh` uses an existing Let's Encrypt certificate or asks Certbot for one. If port 80 is free, HTTP validation is automatic; otherwise Certbot pauses for a manual DNS TXT challenge. A certificate issued through the manual TXT challenge **will not renew unattended**. Configure an automated DNS plugin before expiry or repeat manual issuance in time.
 3. Ensure `/dev/net/tun` exists, that TCP/UDP ports above plus panel port 2083/TCP are free, and that the provider firewall permits them. Restrict panel port 2083 to trusted IP addresses at the provider firewall where possible.
-4. Review `setup.sh`, `install.sh`, `xui-install.sh`, `xui_inbound.py`, `auth.py`, `vpnctl.py`, and `rollback.sh` before running. On a shared or production server, take a provider snapshot first.
+4. Review `setup.sh`, `install.sh`, `xui-install.sh`, `xui_inbound.py`, `xui_port.py`, `xui_client.py`, `auth.py`, `vpnctl.py`, and `rollback.sh` before running. On a shared or production server, take a provider snapshot first.
 
 ## Interactive setup from a reviewed checkout
 
@@ -25,7 +25,7 @@ OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VL
 sudo bash ./setup.sh
 ```
 
-The script asks for the domain, VPN username, and VPN password. It checks the current services and ports before changing them. On an existing managed VPN server, it updates the requested VPN account and preserves the 3x-ui direct TCP inbound. On a fresh server, it installs OpenVPN UDP/TCP, ocserv, and 3x-ui. It disables 3x-ui's unused subscription server on port 2096; the direct TCP client link remains available as a file. It saves the single OpenVPN profile at `/etc/vpn-stack/clients/auto.ovpn`, the direct TCP client link at `/etc/vpn-stack-xui/client.txt`, and random panel login details at `/etc/x-ui/install-result.env`. These files are root-only. The panel's HTTPS address is `https://VPN_DOMAIN:2083/` followed by the generated `XUI_WEB_BASE_PATH` from that credentials file. The panel password is separate from the prompted VPN password.
+The script asks for the domain, VPN username, and VPN password. It checks the current services and ports before changing them. On an existing managed VPN server, it updates the requested VPN account and preserves the 3x-ui direct TCP inbound; if it used port 10443, a new 443 inbound is added with the same client UUID. On a fresh server, it installs OpenVPN UDP/TCP, ocserv, and 3x-ui. It disables 3x-ui's unused subscription server on port 2096. It saves the single OpenVPN profile at `/etc/vpn-stack/clients/auto.ovpn`, a direct TCP client link at `/etc/vpn-stack-xui/client.txt`, a full Xray JSON client profile at `/etc/vpn-stack-xui/client.json`, and random panel login details at `/etc/x-ui/install-result.env`. These files are root-only. The JSON uses a local SOCKS listener on 127.0.0.1:10808, VLESS/TCP+TLS, the prompted domain for both address and SNI, and port 443. The client UUID is generated per server; it is never embedded in this public repository. The panel's HTTPS address is `https://VPN_DOMAIN:2083/` followed by the generated `XUI_WEB_BASE_PATH` from that credentials file. The panel password is separate from the prompted VPN password.
 
 Run a read-only check first, entering only the domain:
 
@@ -83,3 +83,4 @@ See [CERTIFICATE.md](CERTIFICATE.md) for manual renewal and a migration path to 
 ## Review of the supplied third-party files
 
 The `ocserv-almalinux8.sh` file requires `dnf` and changes firewalld, nginx, and sysctl settings. It downloads a server private key, certificate, nginx configuration, and ocserv configuration from a third-party site at install time. The `openvpn-almalinux8.zip` package explicitly requires AlmaLinux 8 and contains a reusable server private key. It sets TCP port 110 and includes changes to firewalld. Neither package is executed by this project, and their keys are not included in this repository.
+

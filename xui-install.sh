@@ -6,7 +6,7 @@ VERSION=v3.11.0
 INSTALLER_SHA256=9684bae4f769b2127fcceceb4f200045657381311867529e6ba76c6b58e2825d
 MARKER=/etc/vpn-stack-xui/managed
 PANEL_PORT=2083
-DIRECT_PORT=10443
+DIRECT_PORT=443
 
 case "${1:-}" in
   --check)
@@ -104,7 +104,7 @@ EOF
     chmod 755 /etc/letsencrypt/renewal-hooks/deploy/92-vpn-stack-xui
     nft delete table inet vpn_stack_xui_guard
     echo '3x-ui direct TCP installed. Root-only panel details: /etc/x-ui/install-result.env'
-    echo 'Root-only direct TCP client link: /etc/vpn-stack-xui/client.txt'
+    echo 'Root-only direct TCP client link and Xray JSON: /etc/vpn-stack-xui/client.txt, client.json'
     ;;
   --remove)
     [[ $EUID == 0 ]] || exit 1
@@ -118,3 +118,4 @@ EOF
     ;;
   *) echo 'Usage: xui-install.sh --check|--install DOMAIN USER CERT KEY | --remove' >&2; exit 2 ;;
 esac
+

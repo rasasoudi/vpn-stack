@@ -38,10 +38,11 @@ fi
 
 if [[ -e /usr/local/x-ui/x-ui || -e /etc/x-ui/x-ui.db ]]; then
   python3 "$ROOT/xui_direct.py"
+  [[ ! -f /etc/vpn-stack-xui/managed ]] || python3 "$ROOT/xui_port.py" --check "$DOMAIN"
   DIRECT=existing-3x-ui
 else
   DIRECT=new-3x-ui
-  ss -H -lnt | awk '{print $4}' | grep -Eq ':10443$|:2083$' && { echo 'TCP port 10443 or 2083 is occupied' >&2; exit 1; }
+  ss -H -lnt | awk '{print $4}' | grep -Eq ':443$|:2083$' && { echo 'TCP port 443 or 2083 is occupied' >&2; exit 1; }
 fi
 
 if command -v getent >/dev/null && command -v ip >/dev/null; then
@@ -110,11 +111,14 @@ unset PASSWORD
 
 if [[ $DIRECT == new-3x-ui ]]; then
   bash "$ROOT/xui-install.sh" --install "$DOMAIN" "$USERNAME" "$CERT" "$KEY"
+elif [[ -f /etc/vpn-stack-xui/managed ]]; then
+  python3 "$ROOT/xui_port.py" --migrate "$DOMAIN"
 fi
 /usr/local/sbin/vpnctl status
 echo "OpenVPN single client file: /etc/vpn-stack/clients/auto.ovpn"
 echo "Cisco/AnyConnect server: https://$DOMAIN:110"
 case "$DIRECT" in
-  existing-3x-ui) echo 'Existing 3x-ui VLESS/TCP direct inbound: port 10443 (unchanged)' ;;
-  new-3x-ui) echo 'VLESS/TCP+TLS client link: /etc/vpn-stack-xui/client.txt (root only)' ;;
+  existing-3x-ui) echo 'Existing 3x-ui VLESS/TCP direct inbound checked; managed legacy installations also use port 443' ;;
+  new-3x-ui) echo 'VLESS/TCP+TLS client link and Xray JSON: /etc/vpn-stack-xui/client.txt, client.json (root only)' ;;
 esac
+
