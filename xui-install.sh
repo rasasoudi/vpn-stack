@@ -59,14 +59,18 @@ case "${1:-}" in
     python3 "$(dirname "$0")/xui_inbound.py" "$domain" "$username" "$cert" "$key" "$PANEL_PORT" "$DIRECT_PORT"
     /usr/local/x-ui/x-ui cert -webCert "$cert" -webCertKey "$key" > /etc/vpn-stack-xui/cert.log 2>&1
     systemctl restart x-ui
-    systemctl is-active --quiet x-ui
-    echo | openssl s_client -connect "127.0.0.1:$PANEL_PORT" -servername "$domain" 2>/dev/null \
-      | openssl x509 -noout -checkhost "$domain" | grep -q 'does match' || {
-        echo '3x-ui panel TLS check failed' >&2; exit 1;
-      }
-    ss -H -lnt | awk '{print $4}' | grep -Eq ":${DIRECT_PORT}$" || {
-      echo '3x-ui direct TCP port is not listening' >&2; exit 1;
-    }
+    ready=0
+    for attempt in {1..30}; do
+      if systemctl is-active --quiet x-ui \
+        && { echo | openssl s_client -connect "127.0.0.1:$PANEL_PORT" -servername "$domain" 2>/dev/null \
+          | openssl x509 -noout -checkhost "$domain" 2>/dev/null | grep -q 'does match'; } \
+        && ss -H -lnt | awk '{print $4}' | grep -Eq ":${DIRECT_PORT}$"; then
+        ready=1
+        break
+      fi
+      sleep 1
+    done
+    [[ $ready == 1 ]] || { echo '3x-ui panel TLS or direct TCP readiness check failed' >&2; exit 1; }
     python3 - "$domain" "$PANEL_PORT" <<'PY'
 import pathlib, re, sys
 path = pathlib.Path('/etc/x-ui/install-result.env')
