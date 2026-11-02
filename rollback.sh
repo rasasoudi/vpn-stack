@@ -16,6 +16,8 @@ rm -f /etc/openvpn/server/udp.conf /etc/openvpn/server/tcp.conf /etc/ocserv/ocse
 rm -f /etc/sysctl.d/90-vpn-stack.conf /etc/systemd/system/vpn-stack-firewall.service
 rm -f /etc/letsencrypt/renewal-hooks/deploy/90-vpn-stack
 rm -f /usr/local/libexec/vpn-stack-auth /usr/local/sbin/vpnctl
+[[ ! -f /etc/vpn-stack/created-ocserv-user ]] || userdel ocserv
+[[ ! -f /etc/vpn-stack/created-ocserv-group ]] || groupdel ocserv
 rm -rf /etc/vpn-stack
 sysctl -q -w "net.ipv4.ip_forward=$previous"
 systemctl daemon-reload

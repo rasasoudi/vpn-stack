@@ -3,26 +3,34 @@ set -Eeuo pipefail
 umask 077
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-MODE=${1:-}
+CHECK=0 VPN_ONLY=0 DNS_CLOUDFLARE=0
+for option in "$@"; do
+  case "$option" in
+    --check) CHECK=1 ;;
+    --vpn-only) VPN_ONLY=1 ;;
+    --dns-cloudflare) DNS_CLOUDFLARE=1 ;;
+    *) echo 'Usage: sudo bash setup.sh [--check] [--vpn-only] [--dns-cloudflare]' >&2; exit 2 ;;
+  esac
+done
 FRESH_INSTALLED=0
 cleanup() {
   result=$?
-  unset PASSWORD CONFIRM
+  unset PASSWORD CONFIRM CLOUDFLARE_TOKEN
   if (( result != 0 && FRESH_INSTALLED == 1 )); then
     bash "$ROOT/rollback.sh" || true
   fi
 }
 trap cleanup EXIT
-[[ $EUID == 0 && -t 0 && ( -z $MODE || $MODE == --check ) ]] || {
-  echo 'Run in an interactive root terminal: sudo bash setup.sh [--check]' >&2; exit 2;
+[[ $EUID == 0 && -t 0 ]] || {
+  echo 'Run in an interactive root terminal: sudo bash setup.sh [--check] [--vpn-only] [--dns-cloudflare]' >&2; exit 2;
 }
 read -r -p 'VPN domain (example: vpn.example.com): ' DOMAIN
 [[ $DOMAIN =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ && $DOMAIN == *.* ]] || {
   echo 'Invalid domain' >&2; exit 2;
 }
 source /etc/os-release
-[[ $ID == ubuntu && ( $VERSION_ID == 24.04 || $VERSION_ID == 26.04 ) ]] || {
-  echo 'Supported: Ubuntu 24.04 or 26.04' >&2; exit 1;
+[[ $ID == ubuntu && ( $VERSION_ID == 22.04 || $VERSION_ID == 24.04 || $VERSION_ID == 26.04 ) ]] || {
+  echo 'Supported: Ubuntu 22.04, 24.04 or 26.04' >&2; exit 1;
 }
 [[ -c /dev/net/tun ]] || { echo '/dev/net/tun is unavailable' >&2; exit 1; }
 
@@ -36,7 +44,9 @@ else
   FRESH=1
 fi
 
-if [[ -e /usr/local/x-ui/x-ui || -e /etc/x-ui/x-ui.db ]]; then
+if [[ $VPN_ONLY == 1 ]]; then
+  DIRECT=vpn-only
+elif [[ -e /usr/local/x-ui/x-ui || -e /etc/x-ui/x-ui.db ]]; then
   python3 "$ROOT/xui_direct.py"
   [[ ! -f /etc/vpn-stack-xui/managed ]] || python3 "$ROOT/xui_port.py" --check "$DOMAIN"
   DIRECT=existing-3x-ui
@@ -56,7 +66,8 @@ fi
 
 CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
-if [[ $MODE == --check ]]; then
+CLOUDFLARE_CREDENTIALS=/etc/letsencrypt/cloudflare.ini
+if [[ $CHECK == 1 ]]; then
   if [[ -r $CERT && -r $KEY ]]; then
     openssl x509 -in "$CERT" -noout -checkhost "$DOMAIN" | grep -q 'does match' || exit 1
     openssl x509 -in "$CERT" -checkend 604800 -noout >/dev/null || exit 1
@@ -65,6 +76,13 @@ if [[ $MODE == --check ]]; then
     echo 'Certificate: missing; setup will request one with Certbot'
   fi
   echo "VPN stack: $([[ $FRESH == 1 ]] && echo new || echo existing); direct TCP: $DIRECT"
+  if [[ $DNS_CLOUDFLARE == 1 ]]; then
+    if [[ -r $CLOUDFLARE_CREDENTIALS ]]; then
+      echo 'Cloudflare credentials: present (token not displayed)'
+    else
+      echo 'Cloudflare credentials: setup will ask for an API token'
+    fi
+  fi
   exit 0
 fi
 
@@ -78,7 +96,52 @@ read -r -s -p 'Confirm VPN password: ' CONFIRM; echo
 if (( ${#PASSWORD} < 12 )); then echo 'Warning: this password is easy to guess' >&2; fi
 unset CONFIRM
 
-if [[ ! -r $CERT || ! -r $KEY ]]; then
+if [[ $FRESH == 1 ]]; then
+  apt-get update
+  ocserv_candidate=$(apt-cache policy ocserv | awk '$1 == "Candidate:" {print $2}')
+  if [[ $VERSION_ID == 22.04 && ( -z $ocserv_candidate || $ocserv_candidate == '(none)' ) ]]; then
+    echo 'Enabling Ubuntu universe for the ocserv package...'
+    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+    add-apt-repository -y universe
+    apt-get update
+    ocserv_candidate=$(apt-cache policy ocserv | awk '$1 == "Candidate:" {print $2}')
+  fi
+  [[ -n $ocserv_candidate && $ocserv_candidate != '(none)' ]] || {
+    echo 'ocserv is unavailable from configured Ubuntu repositories' >&2; exit 1;
+  }
+fi
+
+if [[ $DNS_CLOUDFLARE == 1 ]]; then
+  echo 'Installing Certbot Cloudflare DNS plugin...'
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates openssl certbot python3-certbot-dns-cloudflare
+  [[ ! -L $CLOUDFLARE_CREDENTIALS ]] || { echo 'Cloudflare credentials path must not be a symlink' >&2; exit 1; }
+  if [[ ! -e $CLOUDFLARE_CREDENTIALS ]]; then
+    read -r -s -p 'Cloudflare API token for this DNS zone: ' CLOUDFLARE_TOKEN; echo
+    [[ -n $CLOUDFLARE_TOKEN ]] || { echo 'Cloudflare API token is empty' >&2; exit 2; }
+    printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_TOKEN" > "$CLOUDFLARE_CREDENTIALS"
+    unset CLOUDFLARE_TOKEN
+  fi
+  [[ -f $CLOUDFLARE_CREDENTIALS && -r $CLOUDFLARE_CREDENTIALS ]] || {
+    echo 'Cloudflare credentials file is missing or unreadable' >&2; exit 1;
+  }
+  chmod 600 "$CLOUDFLARE_CREDENTIALS"
+  grep -Eq '^[[:space:]]*dns_cloudflare_api_token[[:space:]]*=' "$CLOUDFLARE_CREDENTIALS" || {
+    echo 'Cloudflare credentials must contain dns_cloudflare_api_token' >&2; exit 1;
+  }
+  RENEWAL_CONF="/etc/letsencrypt/renewal/$DOMAIN.conf"
+  if [[ -r $CERT && -r $KEY && -f $RENEWAL_CONF ]] \
+    && grep -Eq '^[[:space:]]*authenticator[[:space:]]*=[[:space:]]*dns-cloudflare[[:space:]]*$' "$RENEWAL_CONF"; then
+    echo 'Existing certificate already uses Cloudflare DNS for renewal'
+  else
+    renewal_args=()
+    if [[ -r $CERT && -r $KEY ]]; then renewal_args+=(--force-renewal); fi
+    certbot certonly --dns-cloudflare --dns-cloudflare-credentials "$CLOUDFLARE_CREDENTIALS" \
+      --dns-cloudflare-propagation-seconds 120 --non-interactive --agree-tos \
+      --register-unsafely-without-email --cert-name "$DOMAIN" -d "$DOMAIN" "${renewal_args[@]}"
+  fi
+  systemctl enable --now certbot.timer
+elif [[ ! -r $CERT || ! -r $KEY ]]; then
   echo 'Installing Certbot to request a certificate for the domain...'
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl openssl python3 iproute2 nftables iptables certbot
@@ -111,7 +174,7 @@ unset PASSWORD
 
 if [[ $DIRECT == new-3x-ui ]]; then
   bash "$ROOT/xui-install.sh" --install "$DOMAIN" "$USERNAME" "$CERT" "$KEY"
-elif [[ -f /etc/vpn-stack-xui/managed ]]; then
+elif [[ $DIRECT == existing-3x-ui && -f /etc/vpn-stack-xui/managed ]]; then
   python3 "$ROOT/xui_port.py" --migrate "$DOMAIN"
 fi
 /usr/local/sbin/vpnctl status
@@ -120,5 +183,6 @@ echo "Cisco/AnyConnect server: https://$DOMAIN:110"
 case "$DIRECT" in
   existing-3x-ui) echo 'Existing 3x-ui VLESS/TCP direct inbound checked; managed legacy installations also use port 443' ;;
   new-3x-ui) echo 'VLESS/TCP+TLS client link and Xray JSON: /etc/vpn-stack-xui/client.txt, client.json (root only)' ;;
+  vpn-only) echo '3x-ui was left as-is; this installation provides OpenVPN and Cisco/AnyConnect only' ;;
 esac
 
