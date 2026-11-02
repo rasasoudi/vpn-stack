@@ -12,6 +12,16 @@ sudo certbot certonly --manual --preferred-challenges dns --cert-name vpn.exampl
 
 Certbot will show a new TXT value for `_acme-challenge.vpn.example.com`. Add that value in the domain's DNS dashboard, verify it is publicly visible, and then press Enter in Certbot. The old challenge TXT value may be deleted after issuance. Repeat this process before each expiry, or switch to an automated DNS plugin. The project's Certbot deploy hooks reload ocserv and, when installed by this project, restart 3x-ui only when this certificate renews.
 
+If Certbot reports `NXDOMAIN`, the TXT name is absent from public DNS. For a delegated `your-name.dpdns.org` domain, create the TXT record in the external authoritative DNS service, usually with the relative name `_acme-challenge` in the `your-name.dpdns.org` zone. The DigitalPlat registration dashboard is not a DNS record editor. Install `dnsutils` if `dig` is missing. Before pressing Enter, check the exact value Certbot displayed:
+
+```bash
+dig +short NS your-name.dpdns.org
+dig +short TXT _acme-challenge.your-name.dpdns.org @1.1.1.1
+dig +short TXT _acme-challenge.your-name.dpdns.org @8.8.8.8
+```
+
+If the value is missing, check the record name in your DNS provider and wait for the new record to propagate. After a failed attempt, start Certbot again and use the new TXT value it displays.
+
 ## Automatic Cloudflare DNS renewal
 
 For a Cloudflare hosted domain, create an API token limited to **Zone → DNS → Edit** for that one DNS zone. Keep the token out of the repository and chat logs. On the server:

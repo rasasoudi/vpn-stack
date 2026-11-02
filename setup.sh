@@ -135,7 +135,7 @@ unset PASSWORD
 
 if [[ $DIRECT == new-3x-ui ]]; then
   bash "$ROOT/xui-install.sh" --install "$DOMAIN" "$USERNAME" "$CERT" "$KEY"
-elif [[ -f /etc/vpn-stack-xui/managed ]]; then
+elif [[ $DIRECT == existing-3x-ui && -f /etc/vpn-stack-xui/managed ]]; then
   python3 "$ROOT/xui_port.py" --migrate "$DOMAIN"
 fi
 /usr/local/sbin/vpnctl status
