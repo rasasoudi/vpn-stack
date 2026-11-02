@@ -3,25 +3,26 @@ set -Eeuo pipefail
 umask 077
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-CHECK=0 VPN_ONLY=0
+CHECK=0 VPN_ONLY=0 DNS_CLOUDFLARE=0
 for option in "$@"; do
   case "$option" in
     --check) CHECK=1 ;;
     --vpn-only) VPN_ONLY=1 ;;
-    *) echo 'Usage: sudo bash setup.sh [--check] [--vpn-only]' >&2; exit 2 ;;
+    --dns-cloudflare) DNS_CLOUDFLARE=1 ;;
+    *) echo 'Usage: sudo bash setup.sh [--check] [--vpn-only] [--dns-cloudflare]' >&2; exit 2 ;;
   esac
 done
 FRESH_INSTALLED=0
 cleanup() {
   result=$?
-  unset PASSWORD CONFIRM
+  unset PASSWORD CONFIRM CLOUDFLARE_TOKEN
   if (( result != 0 && FRESH_INSTALLED == 1 )); then
     bash "$ROOT/rollback.sh" || true
   fi
 }
 trap cleanup EXIT
 [[ $EUID == 0 && -t 0 ]] || {
-  echo 'Run in an interactive root terminal: sudo bash setup.sh [--check] [--vpn-only]' >&2; exit 2;
+  echo 'Run in an interactive root terminal: sudo bash setup.sh [--check] [--vpn-only] [--dns-cloudflare]' >&2; exit 2;
 }
 read -r -p 'VPN domain (example: vpn.example.com): ' DOMAIN
 [[ $DOMAIN =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ && $DOMAIN == *.* ]] || {
@@ -65,6 +66,7 @@ fi
 
 CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+CLOUDFLARE_CREDENTIALS=/etc/letsencrypt/cloudflare.ini
 if [[ $CHECK == 1 ]]; then
   if [[ -r $CERT && -r $KEY ]]; then
     openssl x509 -in "$CERT" -noout -checkhost "$DOMAIN" | grep -q 'does match' || exit 1
@@ -74,6 +76,13 @@ if [[ $CHECK == 1 ]]; then
     echo 'Certificate: missing; setup will request one with Certbot'
   fi
   echo "VPN stack: $([[ $FRESH == 1 ]] && echo new || echo existing); direct TCP: $DIRECT"
+  if [[ $DNS_CLOUDFLARE == 1 ]]; then
+    if [[ -r $CLOUDFLARE_CREDENTIALS ]]; then
+      echo 'Cloudflare credentials: present (token not displayed)'
+    else
+      echo 'Cloudflare credentials: setup will ask for an API token'
+    fi
+  fi
   exit 0
 fi
 
@@ -102,7 +111,37 @@ if [[ $FRESH == 1 ]]; then
   }
 fi
 
-if [[ ! -r $CERT || ! -r $KEY ]]; then
+if [[ $DNS_CLOUDFLARE == 1 ]]; then
+  echo 'Installing Certbot Cloudflare DNS plugin...'
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates openssl certbot python3-certbot-dns-cloudflare
+  [[ ! -L $CLOUDFLARE_CREDENTIALS ]] || { echo 'Cloudflare credentials path must not be a symlink' >&2; exit 1; }
+  if [[ ! -e $CLOUDFLARE_CREDENTIALS ]]; then
+    read -r -s -p 'Cloudflare API token for this DNS zone: ' CLOUDFLARE_TOKEN; echo
+    [[ -n $CLOUDFLARE_TOKEN ]] || { echo 'Cloudflare API token is empty' >&2; exit 2; }
+    printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_TOKEN" > "$CLOUDFLARE_CREDENTIALS"
+    unset CLOUDFLARE_TOKEN
+  fi
+  [[ -f $CLOUDFLARE_CREDENTIALS && -r $CLOUDFLARE_CREDENTIALS ]] || {
+    echo 'Cloudflare credentials file is missing or unreadable' >&2; exit 1;
+  }
+  chmod 600 "$CLOUDFLARE_CREDENTIALS"
+  grep -Eq '^[[:space:]]*dns_cloudflare_api_token[[:space:]]*=' "$CLOUDFLARE_CREDENTIALS" || {
+    echo 'Cloudflare credentials must contain dns_cloudflare_api_token' >&2; exit 1;
+  }
+  RENEWAL_CONF="/etc/letsencrypt/renewal/$DOMAIN.conf"
+  if [[ -r $CERT && -r $KEY && -f $RENEWAL_CONF ]] \
+    && grep -Eq '^[[:space:]]*authenticator[[:space:]]*=[[:space:]]*dns-cloudflare[[:space:]]*$' "$RENEWAL_CONF"; then
+    echo 'Existing certificate already uses Cloudflare DNS for renewal'
+  else
+    renewal_args=()
+    if [[ -r $CERT && -r $KEY ]]; then renewal_args+=(--force-renewal); fi
+    certbot certonly --dns-cloudflare --dns-cloudflare-credentials "$CLOUDFLARE_CREDENTIALS" \
+      --dns-cloudflare-propagation-seconds 120 --non-interactive --agree-tos \
+      --register-unsafely-without-email --cert-name "$DOMAIN" -d "$DOMAIN" "${renewal_args[@]}"
+  fi
+  systemctl enable --now certbot.timer
+elif [[ ! -r $CERT || ! -r $KEY ]]; then
   echo 'Installing Certbot to request a certificate for the domain...'
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl openssl python3 iproute2 nftables iptables certbot

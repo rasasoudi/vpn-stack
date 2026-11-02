@@ -1,6 +1,6 @@
 # TLS certificate renewal
 
-`setup.sh` uses an existing public certificate or requests one through Certbot. If port 80 is free, it uses HTTP validation; if busy, Certbot prompts for a manual DNS TXT challenge. The certificate path is stored in `/etc/vpn-stack/settings.json`, and `vpnctl status` warns when fewer than seven days remain. On a fresh server with managed 3x-ui, a root-owned renewal hook restarts 3x-ui after a successful renewal so its panel and direct TCP inbound use the new certificate. No private key is included in the repository.
+`setup.sh` uses an existing public certificate or requests one through Certbot. With `--dns-cloudflare`, it uses Cloudflare's API to create the DNS TXT challenge and configures unattended renewal, even when port 80 is busy. Otherwise, if port 80 is free, it uses HTTP validation; if busy, Certbot prompts for a manual DNS TXT challenge. The certificate path is stored in `/etc/vpn-stack/settings.json`, and `vpnctl status` warns when fewer than seven days remain. On a fresh server with managed 3x-ui, a root-owned renewal hook restarts 3x-ui after a successful renewal so its panel and direct TCP inbound use the new certificate. No private key is included in the repository.
 
 ## Manual DNS challenge
 
@@ -23,6 +23,10 @@ dig +short TXT _acme-challenge.your-name.dpdns.org @8.8.8.8
 If the value is missing, check the record name in your DNS provider and wait for the new record to propagate. After a failed attempt, start Certbot again and use the new TXT value it displays.
 
 ## Automatic Cloudflare DNS renewal
+
+For a new installation with DNS hosted at Cloudflare, create an API token with `Zone:DNS:Edit` for only the relevant DNS zone. Then run `sudo bash ./setup.sh --vpn-only --dns-cloudflare` (omit `--vpn-only` if the full stack is wanted). Setup installs the Ubuntu Certbot Cloudflare plugin, asks for the token without echoing it, saves it root-only at `/etc/letsencrypt/cloudflare.ini`, issues the certificate, and enables `certbot.timer`. Do not put the token in command arguments or chat. The credentials file and token must remain valid for renewal. Test with `sudo certbot renew --dry-run` after setup.
+
+The steps below are for switching a certificate that was installed without `--dns-cloudflare` or for manually managing the credentials file.
 
 For a Cloudflare hosted domain, create an API token limited to **Zone → DNS → Edit** for that one DNS zone. Keep the token out of the repository and chat logs. On the server:
 
