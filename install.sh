@@ -34,9 +34,13 @@ done
 [[ $OCSERV_PORT =~ ^[0-9]+$ && $OCSERV_PORT -ge 1 && $OCSERV_PORT -le 65535 ]] || { echo "Invalid ocserv port: $OCSERV_PORT" >&2; exit 2; }
 [[ $UDP_PORT != "$OCSERV_PORT" && $TCP_PORT != "$OCSERV_PORT" ]] || { echo 'Ports must be distinct' >&2; exit 2; }
 source /etc/os-release
-[[ $ID == ubuntu && ( $VERSION_ID == 24.04 || $VERSION_ID == 26.04 ) ]] || { echo 'Supported: Ubuntu 24.04 or 26.04' >&2; exit 1; }
+[[ $ID == ubuntu && ( $VERSION_ID == 22.04 || $VERSION_ID == 24.04 || $VERSION_ID == 26.04 ) ]] || { echo 'Supported: Ubuntu 22.04, 24.04 or 26.04' >&2; exit 1; }
 [[ -c /dev/net/tun ]] || { echo '/dev/net/tun is unavailable' >&2; exit 1; }
-for cmd in openssl python3 ip ss nft iptables apt-get systemctl getent; do command -v "$cmd" >/dev/null || { echo "Missing: $cmd" >&2; exit 1; }; done
+for cmd in openssl python3 ip ss nft iptables apt-get apt-cache systemctl getent; do command -v "$cmd" >/dev/null || { echo "Missing: $cmd" >&2; exit 1; }; done
+ocserv_candidate=$(apt-cache policy ocserv | awk '$1 == "Candidate:" {print $2}')
+if [[ -z $ocserv_candidate || $ocserv_candidate == '(none)' ]]; then
+  echo 'ocserv is unavailable; enable the Ubuntu universe repository and run apt-get update' >&2; exit 1
+fi
 [[ -r $CERT && -r $KEY ]] || { echo 'Certificate or private key is unreadable' >&2; exit 1; }
 openssl x509 -in "$CERT" -noout -checkhost "$DOMAIN" | grep -q 'does match' || { echo 'Certificate does not cover domain' >&2; exit 1; }
 [[ $(openssl x509 -in "$CERT" -noout -pubkey | openssl sha256) == "$(openssl pkey -in "$KEY" -pubout 2>/dev/null | openssl sha256)" ]] || { echo 'Certificate and key do not match' >&2; exit 1; }

@@ -1,0 +1,31 @@
+name: Ubuntu 22.04 compatibility
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  jammy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts and existing Python tests
+        run: |
+          bash -n setup.sh install.sh xui-install.sh rollback.sh egress.sh
+          python3 -m unittest discover -s tests -v
+          grep -Fq 'OCSERV_PORT=110' install.sh
+          grep -Fq 'tcp-port = $OCSERV_PORT' install.sh
+          grep -Fq 'udp-port = $OCSERV_PORT' install.sh
+      - name: Check Ubuntu packages and VPN tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openvpn ocserv nftables iproute2 iptables certbot
+          test -f /lib/systemd/system/openvpn-server@.service || test -f /usr/lib/systemd/system/openvpn-server@.service
+          command -v ocpasswd
+          openvpn --version > "$RUNNER_TEMP/openvpn-version.txt"
+          sed -n '1p' "$RUNNER_TEMP/openvpn-version.txt"
+          ocserv --version
+          openvpn --genkey tls-crypt "$RUNNER_TEMP/tls-crypt.key"
+          test -s "$RUNNER_TEMP/tls-crypt.key"
+          ocserv --help > "$RUNNER_TEMP/ocserv-help.txt"
+          grep -q -- '--test-config' "$RUNNER_TEMP/ocserv-help.txt"

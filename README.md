@@ -1,6 +1,6 @@
 # VPN Stack
 
-Auditable installer for OpenVPN, Cisco/AnyConnect, and direct VLESS/TCP on Ubuntu 24.04 or 26.04:
+Auditable installer for OpenVPN, Cisco/AnyConnect, and direct VLESS/TCP on Ubuntu 22.04, 24.04 or 26.04:
 
 | Mode | Port | Client |
 | --- | --- | --- |
@@ -18,6 +18,7 @@ OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VL
 2. `setup.sh` uses an existing Let's Encrypt certificate or asks Certbot for one. If port 80 is free, HTTP validation is automatic; otherwise Certbot pauses for a manual DNS TXT challenge. A certificate issued through the manual TXT challenge **will not renew unattended**. Configure an automated DNS plugin before expiry or repeat manual issuance in time.
 3. Ensure `/dev/net/tun` exists, that TCP/UDP ports above plus panel port 2083/TCP are free, and that the provider firewall permits them. Restrict panel port 2083 to trusted IP addresses at the provider firewall where possible.
 4. Review `setup.sh`, `install.sh`, `xui-install.sh`, `xui_inbound.py`, `xui_port.py`, `xui_client.py`, `auth.py`, `vpnctl.py`, and `rollback.sh` before running. On a shared or production server, take a provider snapshot first.
+5. On Ubuntu 22.04, `ocserv` comes from the Ubuntu `universe` repository. Fresh setup enables `universe` if the package is unavailable, then refreshes the package lists. Direct use of `install.sh` requires `universe` to be enabled already.
 
 ## Interactive setup from a reviewed checkout
 

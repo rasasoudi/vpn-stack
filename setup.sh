@@ -21,8 +21,8 @@ read -r -p 'VPN domain (example: vpn.example.com): ' DOMAIN
   echo 'Invalid domain' >&2; exit 2;
 }
 source /etc/os-release
-[[ $ID == ubuntu && ( $VERSION_ID == 24.04 || $VERSION_ID == 26.04 ) ]] || {
-  echo 'Supported: Ubuntu 24.04 or 26.04' >&2; exit 1;
+[[ $ID == ubuntu && ( $VERSION_ID == 22.04 || $VERSION_ID == 24.04 || $VERSION_ID == 26.04 ) ]] || {
+  echo 'Supported: Ubuntu 22.04, 24.04 or 26.04' >&2; exit 1;
 }
 [[ -c /dev/net/tun ]] || { echo '/dev/net/tun is unavailable' >&2; exit 1; }
 
@@ -77,6 +77,21 @@ read -r -s -p 'Confirm VPN password: ' CONFIRM; echo
 }
 if (( ${#PASSWORD} < 12 )); then echo 'Warning: this password is easy to guess' >&2; fi
 unset CONFIRM
+
+if [[ $FRESH == 1 ]]; then
+  apt-get update
+  ocserv_candidate=$(apt-cache policy ocserv | awk '$1 == "Candidate:" {print $2}')
+  if [[ $VERSION_ID == 22.04 && ( -z $ocserv_candidate || $ocserv_candidate == '(none)' ) ]]; then
+    echo 'Enabling Ubuntu universe for the ocserv package...'
+    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+    add-apt-repository -y universe
+    apt-get update
+    ocserv_candidate=$(apt-cache policy ocserv | awk '$1 == "Candidate:" {print $2}')
+  fi
+  [[ -n $ocserv_candidate && $ocserv_candidate != '(none)' ]] || {
+    echo 'ocserv is unavailable from configured Ubuntu repositories' >&2; exit 1;
+  }
+fi
 
 if [[ ! -r $CERT || ! -r $KEY ]]; then
   echo 'Installing Certbot to request a certificate for the domain...'
