@@ -3,7 +3,14 @@ set -Eeuo pipefail
 umask 077
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-MODE=${1:-}
+CHECK=0 VPN_ONLY=0
+for option in "$@"; do
+  case "$option" in
+    --check) CHECK=1 ;;
+    --vpn-only) VPN_ONLY=1 ;;
+    *) echo 'Usage: sudo bash setup.sh [--check] [--vpn-only]' >&2; exit 2 ;;
+  esac
+done
 FRESH_INSTALLED=0
 cleanup() {
   result=$?
@@ -13,8 +20,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-[[ $EUID == 0 && -t 0 && ( -z $MODE || $MODE == --check ) ]] || {
-  echo 'Run in an interactive root terminal: sudo bash setup.sh [--check]' >&2; exit 2;
+[[ $EUID == 0 && -t 0 ]] || {
+  echo 'Run in an interactive root terminal: sudo bash setup.sh [--check] [--vpn-only]' >&2; exit 2;
 }
 read -r -p 'VPN domain (example: vpn.example.com): ' DOMAIN
 [[ $DOMAIN =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ && $DOMAIN == *.* ]] || {
@@ -36,7 +43,9 @@ else
   FRESH=1
 fi
 
-if [[ -e /usr/local/x-ui/x-ui || -e /etc/x-ui/x-ui.db ]]; then
+if [[ $VPN_ONLY == 1 ]]; then
+  DIRECT=vpn-only
+elif [[ -e /usr/local/x-ui/x-ui || -e /etc/x-ui/x-ui.db ]]; then
   python3 "$ROOT/xui_direct.py"
   [[ ! -f /etc/vpn-stack-xui/managed ]] || python3 "$ROOT/xui_port.py" --check "$DOMAIN"
   DIRECT=existing-3x-ui
@@ -56,7 +65,7 @@ fi
 
 CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
-if [[ $MODE == --check ]]; then
+if [[ $CHECK == 1 ]]; then
   if [[ -r $CERT && -r $KEY ]]; then
     openssl x509 -in "$CERT" -noout -checkhost "$DOMAIN" | grep -q 'does match' || exit 1
     openssl x509 -in "$CERT" -checkend 604800 -noout >/dev/null || exit 1
@@ -135,5 +144,6 @@ echo "Cisco/AnyConnect server: https://$DOMAIN:110"
 case "$DIRECT" in
   existing-3x-ui) echo 'Existing 3x-ui VLESS/TCP direct inbound checked; managed legacy installations also use port 443' ;;
   new-3x-ui) echo 'VLESS/TCP+TLS client link and Xray JSON: /etc/vpn-stack-xui/client.txt, client.json (root only)' ;;
+  vpn-only) echo '3x-ui was left as-is; this installation provides OpenVPN and Cisco/AnyConnect only' ;;
 esac
 

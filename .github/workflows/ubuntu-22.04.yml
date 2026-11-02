@@ -56,3 +56,11 @@ jobs:
           max-same-clients = 2
           EOF
           sudo ocserv --test-config -c "$RUNNER_TEMP/ocserv.conf"
+      - name: Check VPN-only setup beside an existing 3x-ui
+        run: |
+          sudo mkdir -p /dev/net /etc/x-ui
+          if [ ! -c /dev/net/tun ]; then sudo mknod /dev/net/tun c 10 200; fi
+          sudo touch /etc/x-ui/x-ui.db
+          echo '127.0.0.1 vpn.example.com' | sudo tee -a /etc/hosts > /dev/null
+          output=$(printf 'vpn.example.com\n' | sudo script -e -q -c 'bash ./setup.sh --check --vpn-only' /dev/null)
+          grep -Fq 'direct TCP: vpn-only' <<< "$output"

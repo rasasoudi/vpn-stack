@@ -16,7 +16,7 @@ OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VL
 
 1. Point the domain's A record to an IPv4 address on the server.
 2. `setup.sh` uses an existing Let's Encrypt certificate or asks Certbot for one. If port 80 is free, HTTP validation is automatic; otherwise Certbot pauses for a manual DNS TXT challenge. A certificate issued through the manual TXT challenge **will not renew unattended**. Configure an automated DNS plugin before expiry or repeat manual issuance in time.
-3. Ensure `/dev/net/tun` exists, that TCP/UDP ports above plus panel port 2083/TCP are free, and that the provider firewall permits them. Restrict panel port 2083 to trusted IP addresses at the provider firewall where possible.
+3. Ensure `/dev/net/tun` exists and that the OpenVPN and Cisco TCP/UDP ports are free and permitted by the provider firewall. A new 3x-ui installation also needs 443/TCP and panel port 2083/TCP free; restrict panel port 2083 to trusted IP addresses at the provider firewall where possible.
 4. Review `setup.sh`, `install.sh`, `xui-install.sh`, `xui_inbound.py`, `xui_port.py`, `xui_client.py`, `auth.py`, `vpnctl.py`, and `rollback.sh` before running. On a shared or production server, take a provider snapshot first.
 5. On Ubuntu 22.04, `ocserv` comes from the Ubuntu `universe` repository. Fresh setup enables `universe` if the package is unavailable, then refreshes the package lists. Direct use of `install.sh` requires `universe` to be enabled already.
 6. The installer creates a dedicated `ocserv` system account when the package has not provided one. Rollback removes this account only if the installer created it.
@@ -28,6 +28,8 @@ sudo bash ./setup.sh
 ```
 
 The script asks for the domain, VPN username, and VPN password. It checks the current services and ports before changing them. On an existing managed VPN server, it updates the requested VPN account and preserves the 3x-ui direct TCP inbound; if it used port 10443, a new 443 inbound is added with the same client UUID. On a fresh server, it installs OpenVPN UDP/TCP, ocserv, and 3x-ui. It disables 3x-ui's unused subscription server on port 2096. It saves the single OpenVPN profile at `/etc/vpn-stack/clients/auto.ovpn`, a direct TCP client link at `/etc/vpn-stack-xui/client.txt`, a full Xray JSON client profile at `/etc/vpn-stack-xui/client.json`, and random panel login details at `/etc/x-ui/install-result.env`. These files are root-only. The JSON uses a local SOCKS listener on 127.0.0.1:10808, VLESS/TCP+TLS, the prompted domain for both address and SNI, and port 443. The client UUID is generated per server; it is never embedded in this public repository. The panel's HTTPS address is `https://VPN_DOMAIN:2083/` followed by the generated `XUI_WEB_BASE_PATH` from that credentials file. The panel password is separate from the prompted VPN password.
+
+If an existing 3x-ui installation has no active VLESS/TCP direct inbound on port 443 or 10443, run `sudo bash ./setup.sh --vpn-only` to install OpenVPN and Cisco/AnyConnect while leaving 3x-ui as-is. This also works on a fresh server and skips 3x-ui installation. Use `--check --vpn-only` for the read-only check. Cisco/AnyConnect still uses TCP and UDP port 110.
 
 Run a read-only check first, entering only the domain:
 
