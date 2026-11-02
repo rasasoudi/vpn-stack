@@ -27,5 +27,28 @@ jobs:
           ocserv --version
           openvpn --genkey tls-crypt "$RUNNER_TEMP/tls-crypt.key"
           test -s "$RUNNER_TEMP/tls-crypt.key"
-          ocserv --help > "$RUNNER_TEMP/ocserv-help.txt"
+          ocserv --help > "$RUNNER_TEMP/ocserv-help.txt" 2>&1
           grep -q -- '--test-config' "$RUNNER_TEMP/ocserv-help.txt"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout "$RUNNER_TEMP/server.key" -out "$RUNNER_TEMP/server.crt" \
+            -subj '/CN=vpn.example.com' > /dev/null 2>&1
+          touch "$RUNNER_TEMP/ocpasswd"
+          cat > "$RUNNER_TEMP/ocserv.conf" <<EOF
+          auth = "plain[passwd=$RUNNER_TEMP/ocpasswd]"
+          tcp-port = 110
+          udp-port = 110
+          server-cert = $RUNNER_TEMP/server.crt
+          server-key = $RUNNER_TEMP/server.key
+          socket-file = /run/ocserv-socket
+          run-as-user = ocserv
+          run-as-group = ocserv
+          device = vpns
+          ipv4-network = 10.79.0.0
+          ipv4-netmask = 255.255.255.0
+          dns = 1.1.1.1
+          dns = 9.9.9.9
+          route = default
+          max-clients = 128
+          max-same-clients = 2
+          EOF
+          sudo ocserv --test-config -c "$RUNNER_TEMP/ocserv.conf"
