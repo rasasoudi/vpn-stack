@@ -25,6 +25,10 @@ jobs:
           openvpn --version > "$RUNNER_TEMP/openvpn-version.txt"
           sed -n '1p' "$RUNNER_TEMP/openvpn-version.txt"
           ocserv --version
+          if ! getent group ocserv > /dev/null; then sudo groupadd --system ocserv; fi
+          if ! getent passwd ocserv > /dev/null; then
+            sudo useradd --system --gid ocserv --home-dir /nonexistent --shell /usr/sbin/nologin ocserv
+          fi
           openvpn --genkey tls-crypt "$RUNNER_TEMP/tls-crypt.key"
           test -s "$RUNNER_TEMP/tls-crypt.key"
           ocserv --help > "$RUNNER_TEMP/ocserv-help.txt" 2>&1

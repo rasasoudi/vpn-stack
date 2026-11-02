@@ -19,6 +19,7 @@ OpenVPN and Cisco/AnyConnect use the same prompted VPN username and password. VL
 3. Ensure `/dev/net/tun` exists, that TCP/UDP ports above plus panel port 2083/TCP are free, and that the provider firewall permits them. Restrict panel port 2083 to trusted IP addresses at the provider firewall where possible.
 4. Review `setup.sh`, `install.sh`, `xui-install.sh`, `xui_inbound.py`, `xui_port.py`, `xui_client.py`, `auth.py`, `vpnctl.py`, and `rollback.sh` before running. On a shared or production server, take a provider snapshot first.
 5. On Ubuntu 22.04, `ocserv` comes from the Ubuntu `universe` repository. Fresh setup enables `universe` if the package is unavailable, then refreshes the package lists. Direct use of `install.sh` requires `universe` to be enabled already.
+6. The installer creates a dedicated `ocserv` system account when the package has not provided one. Rollback removes this account only if the installer created it.
 
 ## Interactive setup from a reviewed checkout
 

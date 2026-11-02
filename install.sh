@@ -99,6 +99,14 @@ trap 'echo "Install failed; rolling back managed files" >&2; /etc/vpn-stack/roll
 DEBIAN_FRONTEND=noninteractive apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openvpn ocserv nftables python3 openssl
 systemctl stop ocserv.service 2>/dev/null || true
+if ! getent group ocserv >/dev/null; then
+  groupadd --system ocserv
+  touch /etc/vpn-stack/created-ocserv-group
+fi
+if ! getent passwd ocserv >/dev/null; then
+  useradd --system --gid ocserv --home-dir /nonexistent --shell /usr/sbin/nologin ocserv
+  touch /etc/vpn-stack/created-ocserv-user
+fi
 install -m 755 "$ROOT/auth.py" /usr/local/libexec/vpn-stack-auth
 install -m 700 "$ROOT/vpnctl.py" /usr/local/sbin/vpnctl
 install -d -m 750 -o root -g nogroup /etc/vpn-stack
